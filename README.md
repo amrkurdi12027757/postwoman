@@ -6,7 +6,7 @@ Simple GUI tool to send HTTP requests with support for parallel execution.
 - Choose HTTP method and URL
 - Add custom headers
 - Specify request body as raw text, JSON, form-urlencoded or form-data
-- Attach files in form-data using `@/path/to/file` syntax
+- For form-data use **Add field** to create key/value pairs and select files with the **File...** button
 - Set number of parallel requests to send concurrently
 - View status code, response time and body snippet
 
