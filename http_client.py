@@ -1,7 +1,8 @@
 import mimetypes
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, simpledialog
+import json
 import requests
 import threading
 import time
@@ -12,11 +13,28 @@ class HttpClient(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title('Postwoman')
-        self.geometry('800x600')
+        self.geometry('1000x600')
+        self.save_file = Path('requests.json')
+        self.requests = {}
         self.create_widgets()
+        self.load_requests()
 
     def create_widgets(self):
-        top = ttk.Frame(self)
+        container = ttk.Frame(self)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        side = ttk.Frame(container)
+        side.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+        self.req_list = tk.Listbox(side, height=15)
+        self.req_list.pack(fill=tk.BOTH, expand=True)
+        self.req_list.bind('<<ListboxSelect>>', self.on_select_request)
+        ttk.Button(side, text='New', command=self.new_request).pack(fill=tk.X, pady=2)
+        ttk.Button(side, text='Save', command=self.save_current_request).pack(fill=tk.X)
+
+        main = ttk.Frame(container)
+        main.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        top = ttk.Frame(main)
         top.pack(fill=tk.X, padx=5, pady=5)
         ttk.Label(top, text='Method:').pack(side=tk.LEFT)
         self.method_var = tk.StringVar(value='GET')
@@ -26,12 +44,12 @@ class HttpClient(tk.Tk):
         self.url_entry = ttk.Entry(top, width=60)
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
-        header_frame = ttk.LabelFrame(self, text='Headers')
+        header_frame = ttk.LabelFrame(main, text='Headers')
         header_frame.pack(fill=tk.X, padx=5, pady=5)
         self.headers_text = scrolledtext.ScrolledText(header_frame, height=4)
         self.headers_text.pack(fill=tk.X)
 
-        body_frame = ttk.LabelFrame(self, text='Body')
+        body_frame = ttk.LabelFrame(main, text='Body')
         body_frame.pack(fill=tk.BOTH, padx=5, pady=5, expand=True)
         body_top = ttk.Frame(body_frame)
         body_top.pack(fill=tk.X)
@@ -41,14 +59,14 @@ class HttpClient(tk.Tk):
                      values=['raw', 'json', 'form-urlencoded', 'form-data']).pack(side=tk.LEFT)
         self.body_text = scrolledtext.ScrolledText(body_frame, height=10)
         self.body_text.pack(fill=tk.BOTH, expand=True)
-        parallel_frame = ttk.Frame(self)
+        parallel_frame = ttk.Frame(main)
         parallel_frame.pack(fill=tk.X, padx=5, pady=5)
         ttk.Label(parallel_frame, text='Parallel:').pack(side=tk.LEFT)
         self.parallel_var = tk.IntVar(value=1)
         ttk.Spinbox(parallel_frame, from_=1, to=100, textvariable=self.parallel_var, width=5).pack(side=tk.LEFT)
         ttk.Button(parallel_frame, text='Send', command=self.send).pack(side=tk.LEFT, padx=5)
 
-        response_frame = ttk.LabelFrame(self, text='Response')
+        response_frame = ttk.LabelFrame(main, text='Response')
         response_frame.pack(fill=tk.BOTH, padx=5, pady=5, expand=True)
         self.response_text = scrolledtext.ScrolledText(response_frame, height=15)
         self.response_text.pack(fill=tk.BOTH, expand=True)
@@ -88,6 +106,59 @@ class HttpClient(tk.Tk):
         else:
             data = text if text else None
         return data, json_data, files
+
+    def load_requests(self):
+        if self.save_file.exists():
+            try:
+                self.requests = json.loads(self.save_file.read_text())
+            except Exception:
+                self.requests = {}
+        for name in self.requests:
+            self.req_list.insert(tk.END, name)
+
+    def save_requests_file(self):
+        self.save_file.write_text(json.dumps(self.requests, indent=2))
+
+    def new_request(self):
+        self.method_var.set('GET')
+        self.url_entry.delete(0, tk.END)
+        self.headers_text.delete('1.0', tk.END)
+        self.body_type.set('raw')
+        self.body_text.delete('1.0', tk.END)
+        self.parallel_var.set(1)
+
+    def save_current_request(self):
+        name = simpledialog.askstring('Save request', 'Name:')
+        if not name:
+            return
+        self.requests[name] = {
+            'method': self.method_var.get(),
+            'url': self.url_entry.get(),
+            'headers': self.headers_text.get('1.0', tk.END),
+            'body_type': self.body_type.get(),
+            'body_text': self.body_text.get('1.0', tk.END),
+            'parallel': self.parallel_var.get(),
+        }
+        self.save_requests_file()
+        if name not in self.req_list.get(0, tk.END):
+            self.req_list.insert(tk.END, name)
+
+    def on_select_request(self, event):
+        if not self.req_list.curselection():
+            return
+        name = self.req_list.get(self.req_list.curselection()[0])
+        req = self.requests.get(name)
+        if not req:
+            return
+        self.method_var.set(req.get('method', 'GET'))
+        self.url_entry.delete(0, tk.END)
+        self.url_entry.insert(0, req.get('url', ''))
+        self.headers_text.delete('1.0', tk.END)
+        self.headers_text.insert(tk.END, req.get('headers', ''))
+        self.body_type.set(req.get('body_type', 'raw'))
+        self.body_text.delete('1.0', tk.END)
+        self.body_text.insert(tk.END, req.get('body_text', ''))
+        self.parallel_var.set(req.get('parallel', 1))
 
     def send_request(self, method, url, headers, data, json_data, files, out_list):
         start = time.time()
